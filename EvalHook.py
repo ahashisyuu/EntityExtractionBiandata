@@ -1,4 +1,5 @@
 import collections
+import math
 import os
 import numpy as np
 
@@ -16,12 +17,14 @@ class EvalHook(SessionRunHook):
                  eval_features,
                  eval_steps=100,
                  max_seq_length=300,
+                 max_answer_length=15,
                  checkpoint_dir=None,
                  input_fn_builder=None,
                  th=86,
                  model_name=None):
         self.estimator = estimator
         self.max_seq_length = max_seq_length
+        self.max_answer_length = max_answer_length
         self.dev_file = dev_file
         self.eval_features = eval_features
         self.th = th
@@ -109,9 +112,9 @@ class EvalHook(SessionRunHook):
             # y1 = self.eval_features[i].start_position
             # y2 = self.eval_features[i].end_position
 
-            write_prediction(self.eval_features[i], start_logits, end_logits, n_best_size=5)
+            write_prediction(self.eval_features[i], start_logits, end_logits, n_best_size=5, max_answer_length=self.max_answer_length)
 
-            instances.append((qa_id, yp1, yp2, y1, y2))
+            # instances.append((qa_id, yp1, yp2, y1, y2))
 
         metrics = PRF(instances)
 
@@ -152,6 +155,29 @@ _PrelimPrediction = collections.namedtuple(  # pylint: disable=invalid-name
 
 _NbestPrediction = collections.namedtuple(  # pylint: disable=invalid-name
     "NbestPrediction", ["text", "start_logit", "end_logit"])
+
+
+def _compute_softmax(scores):
+    """Compute softmax probability over raw logits."""
+    if not scores:
+        return []
+
+    max_score = None
+    for score in scores:
+        if max_score is None or score > max_score:
+            max_score = score
+
+    exp_scores = []
+    total_sum = 0.0
+    for score in scores:
+        x = math.exp(score - max_score)
+        exp_scores.append(x)
+        total_sum += x
+
+    probs = []
+    for score in exp_scores:
+        probs.append(score / total_sum)
+    return probs
 
 
 def write_prediction(feature, start_logits, end_logits, n_best_size, max_answer_length):
@@ -229,6 +255,32 @@ def write_prediction(feature, start_logits, end_logits, n_best_size, max_answer_
                 text=final_text,
                 start_logit=pred.start_logit,
                 end_logit=pred.end_logit))
+
+    assert len(nbest) >= 1
+
+    total_scores = []
+    best_non_null_entry = None
+    for entry in nbest:
+        total_scores.append(entry.start_logit + entry.end_logit)
+        if not best_non_null_entry:
+            if entry.text:
+                best_non_null_entry = entry
+
+    probs = _compute_softmax(total_scores)
+
+    nbest_json = []
+    for (i, entry) in enumerate(nbest):
+        output = collections.OrderedDict()
+        output["text"] = entry.text
+        output["probability"] = probs[i]
+        output["start_logit"] = entry.start_logit
+        output["end_logit"] = entry.end_logit
+        nbest_json.append(output)
+
+    assert len(nbest_json) >= 1
+
+    return nbest_json
+
 
 
 
