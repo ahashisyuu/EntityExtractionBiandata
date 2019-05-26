@@ -197,6 +197,7 @@ class InputFeatures(object):
                  unique_id,
                  example_index,
                  tokens,
+                 answer_text,
                  input_ids,
                  input_mask,
                  segment_ids,
@@ -205,6 +206,7 @@ class InputFeatures(object):
         self.unique_id = unique_id
         self.example_index = example_index
         self.tokens = tokens
+        self.answer_text = answer_text
         self.input_ids = input_ids
         self.input_mask = input_mask
         self.segment_ids = segment_ids
@@ -231,6 +233,8 @@ def compute_position(sent, entity):
     return -1
 
 
+hoka_test = []
+
 
 def read_squad_examples(input_file, is_training):
     """Read a SQuAD json file into a list of SquadExample."""
@@ -247,6 +251,11 @@ def read_squad_examples(input_file, is_training):
         orig_answer_text = None
         if is_training:
             orig_answer_text = data_row["label"]
+        else:
+            if data_row["entity"] == "其他":
+                print(data_row["id"])
+                hoka_test.append(data_row["id"])
+                continue
 
         example = SquadExample(
             qas_id=data_row["id"],
@@ -264,8 +273,14 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
     """Loads a data file into a list of `InputBatch`s."""
 
     for (example_index, example) in enumerate(examples):
-        doc_tokens = tokenizer.tokenize(example.sent)
-        query_tokens = tokenizer.tokenize(example.question_text)
+
+        try:
+
+            doc_tokens = tokenizer.tokenize(example.sent)
+            query_tokens = tokenizer.tokenize(example.question_text)
+        except ValueError:
+            print(example.qas_id)
+            continue
 
         if len(doc_tokens) > max_seq_length-len(query_tokens):
             doc_tokens = doc_tokens[:max_seq_length-len(query_tokens)]
@@ -347,6 +362,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
             unique_id=example.qas_id,
             example_index=example_index,
             tokens=tokens,
+            answer_text=example.orig_answer_text,
             input_ids=input_ids,
             input_mask=input_mask,
             segment_ids=segment_ids,
@@ -555,7 +571,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
             outer = tf.matmul(tf.expand_dims(tf.nn.softmax(start_logits), axis=2),
                               tf.expand_dims(tf.nn.softmax(end_logits), axis=1))
-            outer = tf.matrix_band_part(outer, 0, 15)  # 取上3角15条对角线，表示答案最大长度只能取到15+1个单词
+            outer = tf.matrix_band_part(outer, 1, 15)  # 取上3角15条对角线，表示答案最大长度只能取到15+1个单词
             yp1 = tf.argmax(tf.reduce_max(outer, axis=2), axis=1)  # 寻找最大值在L1轴的索引
             yp2 = tf.argmax(tf.reduce_max(outer, axis=1), axis=1)
 
@@ -1189,24 +1205,45 @@ def main(_):
         #             }
 
         instances = []
+        with open("results.csv", "w", encoding="utf-8") as fw:
+            for qa_id in hoka_test:
+                value = "NaN"
+                fw.write(f"\"{qa_id}\",\"{value}\"\n")
+            for i, item in enumerate(predictions):
+                unique_ids = item["unique_ids"]
+                qa_id = test_features[i].unique_id
+                # print(unique_ids, type(unique_ids))
+                # print(qa_id, type(qa_id))
+                assert qa_id == unique_ids
 
-        for i, item in enumerate(predictions):
-            unique_ids = item["unique_ids"]
-            qa_id = test_features[i].unique_id
-            # print(unique_ids, type(unique_ids))
-            # print(qa_id, type(qa_id))
-            assert qa_id == unique_ids
+                start_logits = item["start_logits"]
+                end_logits = item["end_logits"]
+                yp1 = item["yp1"]
+                yp2 = item["yp2"]
 
-            start_logits = item["start_logits"]
-            end_logits = item["end_logits"]
-            yp1 = item["yp1"]
-            yp2 = item["yp2"]
+                input_ids = test_features[i].input_ids
+                pred_ids = input_ids[yp1:yp2+1]
+                pred_text = tokenizer.convert_ids_to_tokens(pred_ids)
 
-            input_ids = test_features[i].input_ids
-            pred_ids = input_ids[yp1:yp2+1]
-            pred_text = tokenizer.convert_ids_to_tokens(pred_ids)
-            print(pred_text)
-            # instances.append((qa_id, yp1, yp2, y1, y2))
+                tok_text = " ".join(pred_text)
+
+                # De-tokenize WordPieces that have been split off.
+                tok_text = tok_text.replace(" ##", "")
+                tok_text = tok_text.replace("##", "")
+
+                # Clean whitespace
+                tok_text = tok_text.strip()
+                tok_text = " ".join(tok_text.split())
+                final_text = " "
+                for c in tok_text.split():
+                    if (("a" <= c[0] <= "z") or ("A" <= c[0] <= "Z")) and \
+                       (("a" <= final_text[-1] <= "z") or ("A" <= final_text[-1] <= "Z")):
+                        final_text += " " + c
+                    else:
+                        final_text += c
+                final_text = final_text.strip()
+                fw.write(f"\"{qa_id}\",\"{final_text}\"\n")
+                # instances.append((qa_id, yp1, yp2, y1, y2))
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import collections
 import os
 import numpy as np
 
@@ -102,11 +103,13 @@ class EvalHook(SessionRunHook):
 
             start_logits = item["start_logits"]
             end_logits = item["end_logits"]
-            yp1 = item["yp1"]
-            yp2 = item["yp2"]
+            # yp1 = item["yp1"]
+            # yp2 = item["yp2"]
+            #
+            # y1 = self.eval_features[i].start_position
+            # y2 = self.eval_features[i].end_position
 
-            y1 = self.eval_features[i].start_position
-            y2 = self.eval_features[i].end_position
+            write_prediction(self.eval_features[i], start_logits, end_logits, n_best_size=5)
 
             instances.append((qa_id, yp1, yp2, y1, y2))
 
@@ -129,3 +132,103 @@ class EvalHook(SessionRunHook):
                 print("save {} to {}".format(org_name, tag_name))
                 with open(org_name, "rb") as fr, open(tag_name, 'wb') as fw:
                     fw.write(fr.read())
+
+
+def _get_best_indexes(logits, n_best_size):
+    """Get the n-best logits from a list."""
+    index_and_score = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)
+
+    best_indexes = []
+    for i in range(len(index_and_score)):
+        if i >= n_best_size:
+            break
+        best_indexes.append(index_and_score[i][0])
+    return best_indexes
+
+
+_PrelimPrediction = collections.namedtuple(  # pylint: disable=invalid-name
+    "PrelimPrediction",
+    ["feature_index", "start_index", "end_index", "start_logit", "end_logit"])
+
+_NbestPrediction = collections.namedtuple(  # pylint: disable=invalid-name
+    "NbestPrediction", ["text", "start_logit", "end_logit"])
+
+
+def write_prediction(feature, start_logits, end_logits, n_best_size, max_answer_length):
+    start_indexes = _get_best_indexes(start_logits, n_best_size)
+    end_indexes = _get_best_indexes(end_logits, n_best_size)
+
+    tokens = feature.tokens
+    mini_index = tokens.index("[SEP]")
+
+    prelim_predictions = []
+    for start_index in start_indexes:
+        for end_index in end_indexes:
+            # We could hypothetically create invalid predictions, e.g., predict
+            # that the start of the span is in the question. We throw out all
+            # invalid predictions.
+            if start_index >= len(feature.tokens):
+                continue
+            if end_index >= len(feature.tokens):
+                continue
+            if start_index <= mini_index:
+                continue
+            if end_index <= mini_index:
+                continue
+            # if not feature.token_is_max_context.get(start_index, False):
+            #     continue
+            if end_index < start_index:
+                continue
+            length = end_index - start_index + 1
+            if length > max_answer_length:
+                continue
+            prelim_predictions.append(
+                _PrelimPrediction(
+                    feature_index=feature.unique_id,
+                    start_index=start_index,
+                    end_index=end_index,
+                    start_logit=start_logits[start_index],
+                    end_logit=end_logits[end_index]))
+
+    prelim_predictions = sorted(
+        prelim_predictions,
+        key=lambda x: (x.start_logit + x.end_logit),
+        reverse=True)
+
+    seen_predictions = {}
+    nbest = []
+    for pred in prelim_predictions:
+        if len(nbest) >= n_best_size:
+            break
+
+        tok_tokens = feature.tokens[pred.start_index:(pred.end_index + 1)]
+        tok_text = " ".join(tok_tokens)
+
+        # De-tokenize WordPieces that have been split off.
+        tok_text = tok_text.replace(" ##", "")
+        tok_text = tok_text.replace("##", "")
+
+        # Clean whitespace
+        tok_text = tok_text.strip()
+        tok_text = " ".join(tok_text.split())
+        final_text = " "
+        for c in tok_text.split():
+            if (("a" <= c[0] <= "z") or ("A" <= c[0] <= "Z")) and \
+                    (("a" <= final_text[-1] <= "z") or ("A" <= final_text[-1] <= "Z")):
+                final_text += " " + c
+            else:
+                final_text += c
+        final_text = final_text.strip()
+
+        if final_text in seen_predictions:
+            continue
+
+        seen_predictions[final_text] = True
+        nbest.append(
+            _NbestPrediction(
+                text=final_text,
+                start_logit=pred.start_logit,
+                end_logit=pred.end_logit))
+
+
+
