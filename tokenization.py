@@ -83,6 +83,7 @@ def convert_to_unicode(text):
         elif isinstance(text, bytes):
             return text.decode("utf-8", "ignore")
         else:
+            print(text)
             raise ValueError("Unsupported string type: %s" % (type(text)))
     elif six.PY2:
         if isinstance(text, str):
@@ -195,6 +196,7 @@ class BasicTokenizer(object):
 
     def tokenize(self, text):
         """Tokenizes a piece of text."""
+        # print(text)
         text = convert_to_unicode(text)
         text = self._clean_text(text)
 
