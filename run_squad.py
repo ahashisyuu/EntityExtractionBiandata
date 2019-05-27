@@ -32,6 +32,8 @@ import tensorflow_estimator as tfes
 import pandas as pd
 
 from tensorflow.contrib import tpu
+
+from EEModel import create_eemodel
 from EvalHook import EvalHook, write_prediction
 
 flags = tf.flags
@@ -458,7 +460,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
         token_type_ids=segment_ids,
         use_one_hot_embeddings=use_one_hot_embeddings)
 
-    final_hidden = model.get_sequence_output()
+    final_hidden = create_eemodel(model.get_all_encoder_layers())
 
     final_hidden_shape = modeling.get_shape_list(final_hidden, expected_rank=3)
     batch_size = final_hidden_shape[0]
@@ -936,7 +938,7 @@ def main(_):
 
         eval_writer = FeatureWriter(
             filename=os.path.join(FLAGS.output_dir, "eval.tf_record"),
-            is_training=True)
+            is_training=False)
         eval_features = []
 
         def append_feature(feature):
@@ -949,7 +951,7 @@ def main(_):
             max_seq_length=FLAGS.max_seq_length,
             doc_stride=FLAGS.doc_stride,
             max_query_length=FLAGS.max_query_length,
-            is_training=True,
+            is_training=False,
             output_fn=append_feature)
         eval_writer.close()
 
@@ -972,7 +974,7 @@ def main(_):
                                         max_answer_length=FLAGS.max_answer_length,
                                         checkpoint_dir="SAVE_MODEL",
                                         input_fn_builder=input_fn_builder,
-                                        th=86,
+                                        th=85,
                                         model_name="BERT")])
 
     if FLAGS.do_predict:

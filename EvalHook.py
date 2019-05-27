@@ -6,7 +6,6 @@ import pandas as pd
 
 from tensorflow.python.training.training_util import _get_or_create_global_step_read as get_global_step
 from tensorflow.python.platform import tf_logging as logging
-from utils import PRF
 from postprocessing import process
 from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.session_run_hook import SessionRunArgs, SessionRunHook
@@ -83,6 +82,9 @@ class EvalHook(SessionRunHook):
                 self._save(session, last_step, metrics)
 
     def evaluation(self, global_step):
+        print("======================================================")
+        print("EVAL STARTING !!!!\n")
+
         dev_input_fn = self.input_fn_builder(
             input_file=self.dev_file,
             seq_length=self.max_seq_length,
@@ -117,6 +119,9 @@ class EvalHook(SessionRunHook):
                                                 n_best_size=20, max_answer_length=self.max_answer_length)
                 best_list = [a["text"] for a in n_best_items[:3]]
 
+                while len(best_list) < 3:
+                    best_list.append("empty")
+
                 fw.write("\"{}\",\"{}\",\"{}\",\"{}\"\n".format(qa_id, *best_list))
                 # instances.append((qa_id, yp1, yp2, y1, y2))
 
@@ -131,7 +136,7 @@ class EvalHook(SessionRunHook):
         results_data["label"] = dev_data["label"]
         results_data["final"] = results_data.apply(process, axis=1)
         final_results = results_data[["id", "final", "label"]]
-        final_results["EM"] = results_data.apply(is_equal, axis=1)
+        final_results["EM"] = final_results.apply(is_equal, axis=1)
 
         EM = final_results["EM"].to_numpy(dtype=np.int)
         acc = np.sum(EM) / EM.shape[0]
@@ -289,6 +294,10 @@ def write_prediction(feature, start_logits, end_logits, n_best_size, max_answer_
                 text=final_text,
                 start_logit=pred.start_logit,
                 end_logit=pred.end_logit))
+
+    if not nbest:
+        nbest.append(
+            _NbestPrediction(text="empty", start_logit=0.0, end_logit=0.0))
 
     assert len(nbest) >= 1
 

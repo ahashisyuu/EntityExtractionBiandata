@@ -1,4 +1,5 @@
 import pandas as pd
+import pickle as pkl
 
 
 def search_text(sent: str, *entity_list):
@@ -11,14 +12,24 @@ def search_text(sent: str, *entity_list):
             index = case_sent.index(entity_list[i])
             break
         except ValueError:
+            # print(entity_list[i], "----------", case_sent)
             i += 1
             if i >= length:
-                raise ValueError("==================")
+                return "empty"
     entity = sent[index:index+len(entity_list[i])]
     return entity
 
 
+with open("all_company_name.pkl", "rb") as fr:
+    all_company_name = pkl.load(fr)
+
+
 def is_normal(entity):
+    # if len(entity) == 1:
+    #     return False
+    #
+    # if entity not in all_company_name:
+    #     print("===", entity)
     if len(entity) > 1:
         return True
     else:
