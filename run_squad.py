@@ -569,18 +569,18 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
                 scaffold_fn=scaffold_fn)
         elif mode == tfes.estimator.ModeKeys.PREDICT:
 
-            outer = tf.matmul(tf.expand_dims(tf.nn.softmax(start_logits), axis=2),
-                              tf.expand_dims(tf.nn.softmax(end_logits), axis=1))
-            outer = tf.matrix_band_part(outer, 1, 15)  # 取上3角15条对角线，表示答案最大长度只能取到15+1个单词
-            yp1 = tf.argmax(tf.reduce_max(outer, axis=2), axis=1)  # 寻找最大值在L1轴的索引
-            yp2 = tf.argmax(tf.reduce_max(outer, axis=1), axis=1)
+            # outer = tf.matmul(tf.expand_dims(tf.nn.softmax(start_logits), axis=2),
+            #                   tf.expand_dims(tf.nn.softmax(end_logits), axis=1))
+            # outer = tf.matrix_band_part(outer, -1, 15)  # 取上3角15条对角线，表示答案最大长度只能取到15+1个单词
+            # yp1 = tf.argmax(tf.reduce_max(outer, axis=2), axis=1)  # 寻找最大值在L1轴的索引
+            # yp2 = tf.argmax(tf.reduce_max(outer, axis=1), axis=1)
 
             predictions = {
                 "unique_ids": unique_ids,
                 "start_logits": start_logits,
                 "end_logits": end_logits,
-                "yp1": yp1,
-                "yp2": yp2,
+                # "yp1": yp1,
+                # "yp2": yp2,
             }
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
                 mode=mode, predictions=predictions, scaffold_fn=scaffold_fn)

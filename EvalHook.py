@@ -2,10 +2,12 @@ import collections
 import math
 import os
 import numpy as np
+import pandas as pd
 
 from tensorflow.python.training.training_util import _get_or_create_global_step_read as get_global_step
 from tensorflow.python.platform import tf_logging as logging
 from utils import PRF
+from postprocessing import process
 from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.session_run_hook import SessionRunArgs, SessionRunHook
 
@@ -95,31 +97,45 @@ class EvalHook(SessionRunHook):
         #                 "end_logits": end_logits,
         #             }
 
-        instances = []
+        with open("./SAVE_MODEL/temp_results.csv", "w", encoding="utf-8") as fw:
+            for i, item in enumerate(predictions):
+                unique_ids = item["unique_ids"]
+                qa_id = self.eval_features[i].unique_id
+                # print(unique_ids, type(unique_ids))
+                # print(qa_id, type(qa_id))
+                assert qa_id == unique_ids
 
-        for i, item in enumerate(predictions):
-            unique_ids = item["unique_ids"]
-            qa_id = self.eval_features[i].unique_id
-            # print(unique_ids, type(unique_ids))
-            # print(qa_id, type(qa_id))
-            assert qa_id == unique_ids
+                start_logits = item["start_logits"]
+                end_logits = item["end_logits"]
+                # yp1 = item["yp1"]
+                # yp2 = item["yp2"]
+                #
+                # y1 = self.eval_features[i].start_position
+                # y2 = self.eval_features[i].end_position
 
-            start_logits = item["start_logits"]
-            end_logits = item["end_logits"]
-            # yp1 = item["yp1"]
-            # yp2 = item["yp2"]
-            #
-            # y1 = self.eval_features[i].start_position
-            # y2 = self.eval_features[i].end_position
+                n_best_items = write_prediction(self.eval_features[i], start_logits, end_logits,
+                                                n_best_size=20, max_answer_length=self.max_answer_length)
+                best_list = [a["text"] for a in n_best_items[:3]]
 
-            write_prediction(self.eval_features[i], start_logits, end_logits, n_best_size=5, max_answer_length=self.max_answer_length)
+                fw.write("\"{}\",\"{}\",\"{}\",\"{}\"\n".format(qa_id, *best_list))
+                # instances.append((qa_id, yp1, yp2, y1, y2))
 
-            # instances.append((qa_id, yp1, yp2, y1, y2))
+        dev_data = pd.read_csv("./filter_data/dev_data.csv",
+                                header=None,
+                                names=["id", "sent", "entity", "label"])
+        results_data = pd.read_csv("./SAVE_MODEL/temp_results.csv",
+                                   header=None,
+                                   names=["id", "s1", "s2", "s3"])
+        results_data["sent"] = dev_data["sent"]
+        results_data["entity"] = dev_data["entity"]
+        results_data["label"] = dev_data["label"]
+        results_data["final"] = results_data.apply(process, axis=1)
+        final_results = results_data[["id", "final", "label"]]
+        final_results["EM"] = results_data.apply(is_equal, axis=1)
 
-        metrics = PRF(instances)
-
-        metrics['global_step'] = global_step
-        acc = metrics["acc"]
+        EM = final_results["EM"].to_numpy(dtype=np.int)
+        acc = np.sum(EM) / EM.shape[0]
+        metrics = {'global_step': global_step, "acc": acc}
         print(f"golbal_step: {global_step}, acc: {acc}")
         return metrics
 
@@ -135,6 +151,11 @@ class EvalHook(SessionRunHook):
                 print("save {} to {}".format(org_name, tag_name))
                 with open(org_name, "rb") as fr, open(tag_name, 'wb') as fw:
                     fw.write(fr.read())
+
+
+def is_equal(x):
+    index, final, label = x
+    return 1 if final == label else 0
 
 
 def _get_best_indexes(logits, n_best_size):
@@ -247,6 +268,19 @@ def write_prediction(feature, start_logits, end_logits, n_best_size, max_answer_
         final_text = final_text.strip()
 
         if final_text in seen_predictions:
+            continue
+        if len(final_text) <= 1:
+            continue
+
+        def contain_punct(_text):
+            if "、" in _text or "," in _text or \
+               "." in _text or "，" in _text or \
+               "。" in _text or ":" in _text or \
+               "：" in _text or "%" in _text:
+                return True
+            return False
+
+        if contain_punct(final_text) is True:
             continue
 
         seen_predictions[final_text] = True
