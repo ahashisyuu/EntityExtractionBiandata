@@ -15,6 +15,7 @@ class EvalHook(SessionRunHook):
     def __init__(self,
                  estimator,
                  dev_file,
+                 org_dev_file,
                  eval_features,
                  eval_steps=100,
                  max_seq_length=300,
@@ -27,10 +28,11 @@ class EvalHook(SessionRunHook):
         self.max_seq_length = max_seq_length
         self.max_answer_length = max_answer_length
         self.dev_file = dev_file
+        self.org_dev_file = org_dev_file
         self.eval_features = eval_features
         self.th = th
         self.checkpoint_dir = checkpoint_dir
-        self.org_dir = "TRAIN_" + model_name
+        self.org_dir = model_name
         if os.path.exists("./EVAL_LOG") is False:
             os.mkdir("./EVAL_LOG")
 
@@ -61,6 +63,7 @@ class EvalHook(SessionRunHook):
         return SessionRunArgs(self._global_step_tensor)
 
     def after_run(self, run_context, run_values):
+        # print(run_values.results)
         stale_global_step = run_values.results
         if self._timer.should_trigger_for_step(
                 stale_global_step + self._steps_per_run):
@@ -70,7 +73,7 @@ class EvalHook(SessionRunHook):
                 self._timer.update_last_triggered_step(global_step)
                 metrics = self.evaluation(global_step)
                 # print("================", MAP, MRR, self.th, type(MAP), type(MRR), type(self.th))
-                if metrics["acc"] > self.th:
+                if metrics["acc"] * 100 > self.th:
                     # print("================", MAP, MRR)
                     self._save(run_context.session, global_step, metrics)
 
@@ -78,7 +81,7 @@ class EvalHook(SessionRunHook):
         last_step = session.run(self._global_step_tensor)
         if last_step != self._timer.last_triggered_step():
             metrics = self.evaluation(last_step)
-            if metrics["acc"] > self.th:
+            if metrics["acc"] * 100 > self.th:
                 self._save(session, last_step, metrics)
 
     def evaluation(self, global_step):
@@ -125,7 +128,7 @@ class EvalHook(SessionRunHook):
                 fw.write("\"{}\",\"{}\",\"{}\",\"{}\"\n".format(qa_id, *best_list))
                 # instances.append((qa_id, yp1, yp2, y1, y2))
 
-        dev_data = pd.read_csv("./filter_data/dev_data.csv",
+        dev_data = pd.read_csv(self.org_dev_file,
                                 header=None,
                                 names=["id", "sent", "entity", "label"])
         results_data = pd.read_csv("./SAVE_MODEL/temp_results.csv",
@@ -146,7 +149,7 @@ class EvalHook(SessionRunHook):
 
     def _save(self, session, step, metrics=None):
         """Saves the latest checkpoint, returns should_stop."""
-        save_path = os.path.join(self._save_path, "step{}_acc{:5.4f}".format(step, metrics["acc"]))
+        save_path = os.path.join(self.save_path, "step{}_acc{:5.4f}".format(step, metrics["acc"]))
 
         list_name = os.listdir(self.org_dir)
         for name in list_name:

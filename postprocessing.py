@@ -20,8 +20,8 @@ def search_text(sent: str, *entity_list):
     return entity
 
 
-with open("all_company_name.pkl", "rb") as fr:
-    all_company_name = pkl.load(fr)
+# with open("all_company_name.pkl", "rb") as fr:
+#     all_company_name = pkl.load(fr)
 
 
 def is_normal(entity):
@@ -58,14 +58,14 @@ def main():
     test_data = pd.read_csv("./filter_data/test_data.csv",
                             header=None,
                             names=["id", "sent", "entity", "label"])
-    results_data = pd.read_csv("results.csv",
+    results_data = pd.read_csv("results2.csv",
                                header=None,
                                names=["id", "s1", "s2", "s3"])
     results_data["sent"] = test_data["sent"]
     results_data["entity"] = test_data["entity"]
     results_data["final"] = results_data.apply(process, axis=1)
     final_results = results_data[["id", "final"]]
-    final_results.to_csv("final_results.txt", header=False, index=False)
+    final_results.to_csv("final_results2.txt", header=False, index=False)
 
 
 if __name__ == "__main__":

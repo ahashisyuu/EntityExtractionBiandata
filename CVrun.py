@@ -854,8 +854,6 @@ def main(_):
 
     # validate_flags_or_throw(bert_config)
 
-    tf.gfile.MakeDirs(FLAGS.output_dir)
-
     tokenizer = tokenization.FullTokenizer(
         vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
 
@@ -865,121 +863,126 @@ def main(_):
             FLAGS.tpu_name, zone=FLAGS.tpu_zone, project=FLAGS.gcp_project)
 
     is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
-    run_config = tpu.RunConfig(
-        cluster=tpu_cluster_resolver,
-        master=FLAGS.master,
-        model_dir=FLAGS.output_dir,
-        save_checkpoints_steps=FLAGS.save_checkpoints_steps,
-        tpu_config=tpu.TPUConfig(
-            iterations_per_loop=FLAGS.iterations_per_loop,
-            num_shards=FLAGS.num_tpu_cores,
-            per_host_input_for_training=is_per_host))
 
-    session_config = tf.ConfigProto(log_device_placement=False)
-    session_config.gpu_options.allow_growth = True
-    run_config = run_config.replace(session_config=session_config)
-    run_config = run_config.replace(keep_checkpoint_max=2)
+    for fold_i in range(5):
+        tf.gfile.MakeDirs(FLAGS.output_dir + "_{}".format(fold_i))
 
-    train_examples = None
-    num_train_steps = None
-    num_warmup_steps = None
-    if FLAGS.do_train:
-        train_examples = read_squad_examples(
-            input_file="filter_data/train_data.csv", is_training=True)
-        num_train_steps = int(
-            len(train_examples) / FLAGS.train_batch_size * FLAGS.num_train_epochs)
-        num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion)
+        run_config = tpu.RunConfig(
+            cluster=tpu_cluster_resolver,
+            master=FLAGS.master,
+            model_dir=FLAGS.output_dir + "_{}".format(fold_i),
+            save_checkpoints_steps=FLAGS.save_checkpoints_steps,
+            tpu_config=tpu.TPUConfig(
+                iterations_per_loop=FLAGS.iterations_per_loop,
+                num_shards=FLAGS.num_tpu_cores,
+                per_host_input_for_training=is_per_host))
 
-        # Pre-shuffle the input to avoid having to make a very large shuffle
-        # buffer in in the `input_fn`.
-        rng = random.Random(12345)
-        rng.shuffle(train_examples)
+        session_config = tf.ConfigProto(log_device_placement=False)
+        session_config.gpu_options.allow_growth = True
+        run_config = run_config.replace(session_config=session_config)
+        run_config = run_config.replace(keep_checkpoint_max=2)
 
-    model_fn = model_fn_builder(
-        bert_config=bert_config,
-        init_checkpoint=FLAGS.init_checkpoint,
-        learning_rate=FLAGS.learning_rate,
-        num_train_steps=num_train_steps,
-        num_warmup_steps=num_warmup_steps,
-        use_tpu=FLAGS.use_tpu,
-        use_one_hot_embeddings=FLAGS.use_tpu)
+        train_examples = None
+        num_train_steps = None
+        num_warmup_steps = None
+        if FLAGS.do_train:
+            train_examples = read_squad_examples(
+                input_file="CV_data/data{}/train_data.csv".format(fold_i), is_training=True)
+            num_train_steps = int(
+                len(train_examples) / FLAGS.train_batch_size * FLAGS.num_train_epochs)
+            num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion)
 
-    # If TPU is not available, this will fall back to normal Estimator on CPU
-    # or GPU.
-    estimator = tpu.TPUEstimator(
-        use_tpu=FLAGS.use_tpu,
-        model_fn=model_fn,
-        config=run_config,
-        train_batch_size=FLAGS.train_batch_size,
-        predict_batch_size=FLAGS.predict_batch_size)
+            # Pre-shuffle the input to avoid having to make a very large shuffle
+            # buffer in in the `input_fn`.
+            rng = random.Random(12345)
+            rng.shuffle(train_examples)
 
-    if FLAGS.do_train:
-        # We write to a temporary file to avoid storing very large constant tensors
-        # in memory.
-        train_writer = FeatureWriter(
-            filename=os.path.join(FLAGS.output_dir, "train.tf_record"),
-            is_training=True)
-        convert_examples_to_features(
-            examples=train_examples,
-            tokenizer=tokenizer,
-            max_seq_length=FLAGS.max_seq_length,
-            doc_stride=FLAGS.doc_stride,
-            max_query_length=FLAGS.max_query_length,
-            is_training=True,
-            output_fn=train_writer.process_feature)
-        train_writer.close()
+        model_fn = model_fn_builder(
+            bert_config=bert_config,
+            init_checkpoint=FLAGS.init_checkpoint,
+            learning_rate=FLAGS.learning_rate,
+            num_train_steps=num_train_steps,
+            num_warmup_steps=num_warmup_steps,
+            use_tpu=FLAGS.use_tpu,
+            use_one_hot_embeddings=FLAGS.use_tpu)
 
-        tf.logging.info("***** Running training *****")
-        tf.logging.info("  Num orig examples = %d", len(train_examples))
-        tf.logging.info("  Num split examples = %d", train_writer.num_features)
-        tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
-        tf.logging.info("  Num steps = %d", num_train_steps)
-        del train_examples
+        # If TPU is not available, this will fall back to normal Estimator on CPU
+        # or GPU.
+        estimator = tpu.TPUEstimator(
+            use_tpu=FLAGS.use_tpu,
+            model_fn=model_fn,
+            config=run_config,
+            train_batch_size=FLAGS.train_batch_size,
+            predict_batch_size=FLAGS.predict_batch_size)
 
-        eval_examples = read_squad_examples(
-            input_file="filter_data/dev_data.csv", is_training=True)
+        if FLAGS.do_train:
+            # We write to a temporary file to avoid storing very large constant tensors
+            # in memory.
+            train_writer = FeatureWriter(
+                filename=os.path.join(FLAGS.output_dir + "_{}".format(fold_i), "train.tf_record"),
+                is_training=True)
+            convert_examples_to_features(
+                examples=train_examples,
+                tokenizer=tokenizer,
+                max_seq_length=FLAGS.max_seq_length,
+                doc_stride=FLAGS.doc_stride,
+                max_query_length=FLAGS.max_query_length,
+                is_training=True,
+                output_fn=train_writer.process_feature)
+            train_writer.close()
 
-        eval_writer = FeatureWriter(
-            filename=os.path.join(FLAGS.output_dir, "eval.tf_record"),
-            is_training=False)
-        eval_features = []
+            tf.logging.info("***** Running training *****")
+            tf.logging.info("  Num orig examples = %d", len(train_examples))
+            tf.logging.info("  Num split examples = %d", train_writer.num_features)
+            tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
+            tf.logging.info("  Num steps = %d", num_train_steps)
+            del train_examples
 
-        def append_feature(feature):
-            eval_features.append(feature)
-            eval_writer.process_feature(feature)
+            eval_examples = read_squad_examples(
+                input_file="CV_data/data{}/dev_data.csv".format(fold_i), is_training=True)
 
-        convert_examples_to_features(
-            examples=eval_examples,
-            tokenizer=tokenizer,
-            max_seq_length=FLAGS.max_seq_length,
-            doc_stride=FLAGS.doc_stride,
-            max_query_length=FLAGS.max_query_length,
-            is_training=False,
-            output_fn=append_feature)
-        eval_writer.close()
+            eval_writer = FeatureWriter(
+                filename=os.path.join(FLAGS.output_dir + "_{}".format(fold_i), "eval.tf_record"),
+                is_training=False)
+            eval_features = []
 
-        tf.logging.info("***** Running predictions *****")
-        tf.logging.info("  Num orig examples = %d", len(eval_examples))
-        tf.logging.info("  Num split examples = %d", len(eval_features))
-        tf.logging.info("  Batch size = %d", FLAGS.predict_batch_size)
+            def append_feature(feature):
+                eval_features.append(feature)
+                eval_writer.process_feature(feature)
 
-        train_input_fn = input_fn_builder(
-            input_file=train_writer.filename,
-            seq_length=FLAGS.max_seq_length,
-            is_training=True,
-            drop_remainder=True)
-        estimator.train(input_fn=train_input_fn, max_steps=num_train_steps,
-                        hooks=[EvalHook(estimator,
-                                        eval_writer.filename,
-                                        "filter_data/dev_data.csv",
-                                        eval_features,
-                                        eval_steps=FLAGS.save_checkpoints_steps,
-                                        max_seq_length=FLAGS.max_seq_length,
-                                        max_answer_length=FLAGS.max_answer_length,
-                                        checkpoint_dir="SAVE_MODEL",
-                                        input_fn_builder=input_fn_builder,
-                                        th=86,
-                                        model_name="BERT")])
+            convert_examples_to_features(
+                examples=eval_examples,
+                tokenizer=tokenizer,
+                max_seq_length=FLAGS.max_seq_length,
+                doc_stride=FLAGS.doc_stride,
+                max_query_length=FLAGS.max_query_length,
+                is_training=False,
+                output_fn=append_feature)
+            eval_writer.close()
+
+            tf.logging.info("***** Running predictions *****")
+            tf.logging.info("  Num orig examples = %d", len(eval_examples))
+            tf.logging.info("  Num split examples = %d", len(eval_features))
+            tf.logging.info("  Batch size = %d", FLAGS.predict_batch_size)
+
+            train_input_fn = input_fn_builder(
+                input_file=train_writer.filename,
+                seq_length=FLAGS.max_seq_length,
+                is_training=True,
+                drop_remainder=True)
+            estimator.train(input_fn=train_input_fn, max_steps=num_train_steps,
+                            hooks=[EvalHook(estimator,
+                                            eval_writer.filename,
+                                            "CV_data/data{}/dev_data.csv".format(fold_i),
+                                            eval_features,
+                                            eval_steps=FLAGS.save_checkpoints_steps,
+                                            max_seq_length=FLAGS.max_seq_length,
+                                            max_answer_length=FLAGS.max_answer_length,
+                                            checkpoint_dir="SAVE_MODEL",
+                                            input_fn_builder=input_fn_builder,
+                                            th=85.0,
+                                            model_name="output_model_{}".format(fold_i))])
+
 
     if FLAGS.do_predict:
         test_examples = read_squad_examples(
@@ -1046,33 +1049,6 @@ def main(_):
                 best_list = [a["text"] for a in n_best_item[:3]]
 
                 fw.write("\"{}\",\"{}\",\"{}\",\"{}\"\n".format(qa_id, *best_list))
-
-                # yp1 = item["yp1"]
-                # yp2 = item["yp2"]
-                #
-                # input_ids = test_features[i].input_ids
-                # pred_ids = input_ids[yp1:yp2+1]
-                # pred_text = tokenizer.convert_ids_to_tokens(pred_ids)
-                #
-                # tok_text = " ".join(pred_text)
-                #
-                # # De-tokenize WordPieces that have been split off.
-                # tok_text = tok_text.replace(" ##", "")
-                # tok_text = tok_text.replace("##", "")
-                #
-                # # Clean whitespace
-                # tok_text = tok_text.strip()
-                # tok_text = " ".join(tok_text.split())
-                # final_text = " "
-                # for c in tok_text.split():
-                #     if (("a" <= c[0] <= "z") or ("A" <= c[0] <= "Z")) and \
-                #        (("a" <= final_text[-1] <= "z") or ("A" <= final_text[-1] <= "Z")):
-                #         final_text += " " + c
-                #     else:
-                #         final_text += c
-                # final_text = final_text.strip()
-                # fw.write(f"\"{qa_id}\",\"{final_text}\"\n")
-                # instances.append((qa_id, yp1, yp2, y1, y2))
 
 
 if __name__ == "__main__":
