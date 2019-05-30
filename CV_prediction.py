@@ -43,7 +43,7 @@ FLAGS = flags.FLAGS
 # Required parameters
 
 bert_dir = "./chinese_L-12_H-768_A-12/"
-output_dir = "output_model"
+output_dir = "SAVE_MODEL/output_model"
 max_seq_length = 300
 max_query_length = 10
 max_answer_length = 20
@@ -948,6 +948,7 @@ def main(_):
         #             }
 
         instances = []
+
         with open("./results/cv_results{}.csv".format(fold_i), "w",
                   encoding="utf-8") as fw:
             for i, item in enumerate(predictions):

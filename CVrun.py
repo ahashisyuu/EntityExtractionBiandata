@@ -980,7 +980,7 @@ def main(_):
                                             max_answer_length=FLAGS.max_answer_length,
                                             checkpoint_dir="SAVE_MODEL",
                                             input_fn_builder=input_fn_builder,
-                                            th=85.0,
+                                            th=85.5,
                                             model_name="output_model_{}".format(fold_i))])
 
 

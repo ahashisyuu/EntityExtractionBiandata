@@ -43,13 +43,13 @@ FLAGS = flags.FLAGS
 # Required parameters
 
 bert_dir = "./chinese_L-12_H-768_A-12/"
-output_dir = "output_model"
+output_dir = "SAVE_MODEL/output_model_3"
 max_seq_length = 300
 max_query_length = 10
 max_answer_length = 20
 learning_rate = 5e-5
-do_train = True
-do_predict = False
+do_train = False
+do_predict = True
 train_batch_size = 6
 predict_batch_size = 6
 num_train_epochs = 10
@@ -978,7 +978,7 @@ def main(_):
                                         max_answer_length=FLAGS.max_answer_length,
                                         checkpoint_dir="SAVE_MODEL",
                                         input_fn_builder=input_fn_builder,
-                                        th=86,
+                                        th=85.5,
                                         model_name="BERT")])
 
     if FLAGS.do_predict:
@@ -1026,7 +1026,7 @@ def main(_):
         #             }
 
         instances = []
-        with open("results2.csv", "w", encoding="utf-8") as fw:
+        with open("results4.csv", "w", encoding="utf-8") as fw:
             # for qa_id in hoka_test:
             #     value = "NaN"
             #     fw.write(f"\"{qa_id}\",\"{value}\"\n")
