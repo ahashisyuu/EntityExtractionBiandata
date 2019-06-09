@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import json
+import pickle as pkl
 import math
 import os
 import random
@@ -43,7 +44,7 @@ FLAGS = flags.FLAGS
 # Required parameters
 
 bert_dir = "./chinese_L-12_H-768_A-12/"
-output_dir = "SAVE_MODEL/output_model"
+output_dir = "SAVE_MODEL/output_model_LSTM"
 max_seq_length = 300
 max_query_length = 10
 max_answer_length = 20
@@ -864,7 +865,7 @@ def main(_):
 
     is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
 
-    for fold_i in range(5):
+    for fold_i in [4]:
         model_dir = FLAGS.output_dir + "_{}".format(fold_i)
 
         run_config = tpu.RunConfig(
@@ -949,7 +950,7 @@ def main(_):
 
         instances = []
 
-        with open("./results/cv_results{}.csv".format(fold_i), "w",
+        with open("./results/cv_results_lstm_2th_{}.csv".format(fold_i), "w",
                   encoding="utf-8") as fw:
             for i, item in enumerate(predictions):
                 unique_ids = item["unique_ids"]
@@ -964,7 +965,12 @@ def main(_):
                                                n_best_size=20, max_answer_length=FLAGS.max_answer_length)
 
                 best_list = [a["text"] for a in n_best_item[:3]]
-
+                # json.dump({"qa_id": qa_id, "n_best_items": n_best_item}, fw)
+                # fw.write("\n")
+                if len(best_list) < 3:
+                    print(n_best_item)
+                while len(best_list) < 3:
+                    best_list.append("empty")
                 fw.write("\"{}\",\"{}\",\"{}\",\"{}\"\n".format(qa_id, *best_list))
 
 

@@ -1,11 +1,11 @@
 import tensorflow as tf
 from tensorflow.python.ops.rnn import bidirectional_dynamic_rnn
 from tensorflow.python.ops.rnn_cell_impl import GRUCell
-from modeling import dropout
+from modeling import dropout, create_initializer, layer_norm
 
 
 def create_eemodel(all_sequence, sent_mask):
-    TModel = Baseline2
+    TModel = LSTM
     model = TModel(all_sequence, sent_mask)
     return model.get_output()
 
@@ -42,6 +42,7 @@ class LSTM(Model):
         temp = self.all_sequence[-1]
 
         with tf.variable_scope("lstm"):
+            temp = dropout(temp, 0.1)
             seq_len = tf.reduce_sum(self.sent_mask, axis=1)
             gru_fw = GRUCell(num_units=768, activation=tf.tanh)
             gru_bw = GRUCell(num_units=768, activation=tf.tanh)
@@ -50,10 +51,21 @@ class LSTM(Model):
                 sequence_length=seq_len, dtype=tf.float32)
 
             gru_output = tf.concat(outputs, axis=2)
+            # gru_output = dropout(gru_output, 0.1)
+            gru_output = tf.layers.dense(gru_output, units=768,
+                                         kernel_initializer=create_initializer(0.02))
             gru_output = dropout(gru_output, 0.1)
-            gru_output = tf.layers.dense(gru_output, units=768, activation=tf.tanh)
+            outputs = layer_norm(gru_output + temp)
 
-        return temp + gru_output
+            in_outputs = tf.layers.dense(outputs, units=768, activation=tf.tanh,
+                                         kernel_initializer=create_initializer(0.02))
+
+            layer_output = tf.layers.dense(in_outputs, 768,
+                                           kernel_initializer=create_initializer(0.02))
+            layer_output = dropout(layer_output, 0.1)
+            layer_output = layer_norm(layer_output + outputs)
+
+        return layer_output
 
 
 

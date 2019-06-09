@@ -42,7 +42,7 @@ new_data["sent"] = new_data["sent"].apply(_drop_noise)
 
 train_label = new_data["label"]
 
-kf = KFold(n_splits=5, random_state=0)
+kf = KFold(n_splits=5, random_state=5)
 
 for i, (train_index, dev_index) in enumerate(kf.split(new_data, train_label)):
     x_train = new_data.iloc[train_index]

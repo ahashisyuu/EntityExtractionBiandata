@@ -43,15 +43,15 @@ FLAGS = flags.FLAGS
 # Required parameters
 
 bert_dir = "./chinese_L-12_H-768_A-12/"
-output_dir = "output_model"
+output_dir = "output_model_LSTM"
 max_seq_length = 300
 max_query_length = 10
 max_answer_length = 20
 learning_rate = 5e-5
 do_train = True
 do_predict = False
-train_batch_size = 6
-predict_batch_size = 6
+train_batch_size = 8
+predict_batch_size = 8
 num_train_epochs = 10
 checkpoints_steps = 500
 
@@ -864,7 +864,7 @@ def main(_):
 
     is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
 
-    for fold_i in range(5):
+    for fold_i in [2]:
         tf.gfile.MakeDirs(FLAGS.output_dir + "_{}".format(fold_i))
 
         run_config = tpu.RunConfig(
@@ -981,7 +981,7 @@ def main(_):
                                             checkpoint_dir="SAVE_MODEL",
                                             input_fn_builder=input_fn_builder,
                                             th=85.5,
-                                            model_name="output_model_{}".format(fold_i))])
+                                            model_name="output_model_LSTM_{}".format(fold_i))])
 
 
     if FLAGS.do_predict:

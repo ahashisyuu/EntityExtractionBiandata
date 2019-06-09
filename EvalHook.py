@@ -318,9 +318,9 @@ def write_prediction(feature, start_logits, end_logits, n_best_size, max_answer_
     for (i, entry) in enumerate(nbest):
         output = collections.OrderedDict()
         output["text"] = entry.text
-        output["probability"] = probs[i]
-        output["start_logit"] = entry.start_logit
-        output["end_logit"] = entry.end_logit
+        output["probability"] = str(probs[i])
+        output["start_logit"] = str(entry.start_logit)
+        output["end_logit"] = str(entry.end_logit)
         nbest_json.append(output)
 
     assert len(nbest_json) >= 1
